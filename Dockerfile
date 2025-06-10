@@ -67,19 +67,25 @@ COPY ./maccms.conf /etc/apache2/sites-available/maccms.conf
 RUN a2dissite 000-default.conf && a2ensite maccms.conf && a2enmod rewrite
 
 # --------------------------------------------------------------------
-# 第四阶段：安装并配置 MySQL
+# 第四阶段：安装并配置 MySQL 
 # --------------------------------------------------------------------
 # 设置 MySQL root 用户的免密登录，方便后续脚本操作
 RUN mkdir -p /etc/mysql/conf.d \
     && echo '[mysqld]' > /etc/mysql/conf.d/disable_auth.cnf \
     && echo 'skip-grant-tables' >> /etc/mysql/conf.d/disable_auth.cnf
 
+# 通过 policy-rc.d 阻止服务在安装时自动启动，这是 Dockerfile 最佳实践
+RUN echo 'exit 101' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d
+
+# 安装 MySQL 服务
 RUN apt-get update && apt-get install -y --no-install-recommends mysql-server \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# 安装完成后，移除策略文件，以免影响容器运行
+RUN rm /usr/sbin/policy-rc.d
+
 # 修改 MySQL 默认数据目录，指向持久化卷
 RUN sed -i 's|/var/lib/mysql|/var/www/html/mysql|g' /etc/mysql/mysql.conf.d/mysqld.cnf
-
 # --------------------------------------------------------------------
 # 第五阶段：配置 Supervisor 和 SSH
 # --------------------------------------------------------------------
