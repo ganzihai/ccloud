@@ -1,4 +1,4 @@
-# Dockerfile (优化版)
+# Dockerfile (修正版)
 # ------------------------------------------------------------------------------
 # 阶段 1: 基础镜像选择
 # 优化点: 使用 debian:bullseye-slim 代替 ubuntu:20.04，体积显著减小，且兼容 apt。
@@ -9,9 +9,8 @@ FROM debian:bullseye-slim
 ARG DEBIAN_FRONTEND=noninteractive
 
 # 设置语言环境和路径的环境变量
-ENV TZ=Asia/Shanghai
-ENV NODE_VERSION=22.x
-ENV GO_VERSION=1.24.4
+ENV NODE_VERSION=18.x
+ENV GO_VERSION=1.21.5
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # ------------------------------------------------------------------------------
@@ -46,8 +45,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
-    # Node.js PPA 需要的依赖
+    # PPA 和其他工具依赖
     gnupg \
+    # 修正点: 添加 lsb-release 包，以确保 $(lsb_release -sc) 命令可以正常工作
+    lsb-release \
     # 安装 PHP PPA 源 (ondrej/php)
     && curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list \
@@ -95,9 +96,8 @@ RUN mkdir -p /var/run/sshd \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # 配置 MySQL
-# Debian/MariaDB 的数据目录配置方式略有不同，但原理一致
-RUN sed -i 's|^datadir.*|datadir = /var/www/html/mysql|' /etc/mysql/mariadb.conf.d/50-server.cnf \
-    && sed -i 's|^user.*|user = mysql\n\ndatadir = /var/www/html/mysql|' /etc/mysql/my.cnf || true
+# Debian/MariaDB 的数据目录配置在 50-server.cnf 文件中
+RUN sed -i 's|^datadir.*|datadir = /var/www/html/mysql|' /etc/mysql/mariadb.conf.d/50-server.cnf
 
 # 配置 Supervisor
 COPY supervisord.conf /etc/supervisor/supervisord.conf
