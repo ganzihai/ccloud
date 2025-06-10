@@ -1,114 +1,113 @@
-# Dockerfile (修正版)
-# ------------------------------------------------------------------------------
-# 阶段 1: 基础镜像选择
-# 优化点: 使用 debian:bullseye-slim 代替 ubuntu:20.04，体积显著减小，且兼容 apt。
-# ------------------------------------------------------------------------------
-FROM debian:bullseye-slim
+# 使用官方 Ubuntu 20.04 作为基础镜像
+FROM ubuntu:20.04
 
-# 避免在构建过程中出现交互式提示
-ARG DEBIAN_FRONTEND=noninteractive
+# 作者信息
+LABEL maintainer="Ganzi>"
 
-# 设置语言环境和路径的环境变量
+# 设置环境变量，避免安装过程中的交互式提示
+ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
-ENV NODE_VERSION=22.x
-ENV GO_VERSION=1.24.4
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-# ------------------------------------------------------------------------------
-# 阶段 2: 核心依赖安装
-# 优化点: 将所有 apt 安装合并到一个 RUN 指令中，以减少镜像层数。
-# 优化点: 始终使用 --no-install-recommends 减少不必要的包安装。
-# 优化点: 在指令的最后彻底清理 apt 缓存。
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------
+# 第一阶段：安装系统基础工具和依赖
+# --------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # 基础工具
+    # 核心工具
+    sudo curl wget nano tar gzip unzip sshpass ca-certificates \
+    # 添加 PPA 和其他仓库所需的工具
     software-properties-common \
-    ca-certificates \
-    apt-transport-https \
-    curl \
-    wget \
-    git \
-    sudo \
-    nano \
-    tar \
-    gzip \
-    unzip \
-    sshpass \
-    # 用于定时任务文件监控
-    inotify-tools \
-    # 用于SSH服务
+    # Supervisor 和 Cron
+    supervisor cron \
+    # SSH 服务
     openssh-server \
-    # 用于服务管理
-    supervisor \
-    # 用于MySQL数据库 (Debian中包名为 default-mysql-server)
-    default-mysql-server \
-    # Python环境
-    python3 \
-    python3-pip \
-    python3-venv \
-    # PPA 和其他工具依赖
-    gnupg \
-    # 修正点: 添加 lsb-release 包，以确保 $(lsb_release -sc) 命令可以正常工作
-    lsb-release \
-    # 安装 PHP PPA 源 (ondrej/php)
-    && curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list \
-    # 安装 Node.js PPA 源
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_VERSION} $(lsb_release -sc) main" > /etc/apt/sources.list.d/nodesource.list \
-    # 再次更新以加载新的 PPA 源
-    && apt-get update \
-    # 安装 PHP, Node.js 及相关扩展
-    && apt-get install -y --no-install-recommends \
-    apache2 \
-    libapache2-mod-php7.4 \
-    php7.4 \
-    php7.4-cli \
-    php7.4-common \
-    php7.4-mysql \
-    php7.4-gd \
-    php7.4-mbstring \
-    php7.4-curl \
-    php7.4-xml \
-    php7.4-zip \
-    php7.4-bcmath \
-    nodejs \
-    # 优化点: 在单个 RUN 指令的末尾执行清理操作
-    && apt-get autoremove -y \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    # Cron 文件监控工具
+    inotify-tools \
+    # 权限管理
+    acl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# ------------------------------------------------------------------------------
-# 阶段 3: 语言与服务配置
-# ------------------------------------------------------------------------------
-# 配置 Apache
-RUN a2enmod rewrite \
-    && sed -i 's|/var/www/html|/var/www/html/maccms|g' /etc/apache2/sites-available/000-default.conf \
-    && sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
+# --------------------------------------------------------------------
+# 第二阶段：安装多语言环境 (Python, Node.js, Go)
+# --------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # 安装 Python 3 和 pip
+    python3 python3-pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 安装 Go 语言
-# 优化点: 在同一层中下载、解压并删除临时文件
-RUN wget "https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz \
+# 安装 Node.js (使用 NodeSource 官方推荐方式安装 LTS 版本)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 安装 Go 语言 (使用官方二进制包)
+ENV GO_VERSION=1.24.4
+RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -O /tmp/go.tar.gz \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz
+# 将 Go 的路径添加到全局 PATH
+ENV PATH=$PATH:/usr/local/go/bin
 
-# 配置 SSH
-RUN mkdir -p /var/run/sshd \
-    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+# --------------------------------------------------------------------
+# 第三阶段：安装并配置 Apache + PHP 7.4.33
+# --------------------------------------------------------------------
+RUN add-apt-repository ppa:ondrej/php -y \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+    # Apache 服务器
+    apache2 \
+    # 指定 PHP 版本及常用扩展 (Maccms 常用)
+    php7.4 libapache2-mod-php7.4 \
+    php7.4-cli php7.4-common php7.4-mysql php7.4-gd php7.4-mbstring \
+    php7.4-curl php7.4-xml php7.4-zip php7.4-opcache \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 配置 MySQL
-# Debian/MariaDB 的数据目录配置在 50-server.cnf 文件中
-RUN sed -i 's|^datadir.*|datadir = /var/www/html/mysql|' /etc/mysql/mariadb.conf.d/50-server.cnf
+# 配置 Apache
+# 创建新的站点配置文件，将根目录指向持久化卷中的 maccms 目录
+COPY ./maccms.conf /etc/apache2/sites-available/maccms.conf
+# 禁用默认站点，启用 maccms 站点和 rewrite 模块
+RUN a2dissite 000-default.conf && a2ensite maccms.conf && a2enmod rewrite
 
-# 配置 Supervisor
-COPY supervisord.conf /etc/supervisor/supervisord.conf
+# --------------------------------------------------------------------
+# 第四阶段：安装并配置 MySQL
+# --------------------------------------------------------------------
+# 设置 MySQL root 用户的免密登录，方便后续脚本操作
+RUN mkdir -p /etc/mysql/conf.d \
+    && echo '[mysqld]' > /etc/mysql/conf.d/disable_auth.cnf \
+    && echo 'skip-grant-tables' >> /etc/mysql/conf.d/disable_auth.cnf
 
-# ------------------------------------------------------------------------------
-# 阶段 4: 入口点与最终设置
-# ------------------------------------------------------------------------------
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN apt-get update && apt-get install -y --no-install-recommends mysql-server \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 修改 MySQL 默认数据目录，指向持久化卷
+RUN sed -i 's|/var/lib/mysql|/var/www/html/mysql|g' /etc/mysql/mysql.conf.d/mysqld.cnf
+
+# --------------------------------------------------------------------
+# 第五阶段：配置 Supervisor 和 SSH
+# --------------------------------------------------------------------
+# 配置 Supervisor，让其包含持久化卷中的配置文件
+# 我们不在镜像里放任何具体的服务 conf，只配置 include 路径
+RUN mkdir -p /var/log/supervisor \
+    && echo '[include]' >> /etc/supervisor/supervisord.conf \
+    && echo 'files = /var/www/html/supervisor/conf.d/*.conf' >> /etc/supervisor/supervisord.conf
+
+# 配置 SSH，允许 root 登录（密码设置在 entrypoint.sh 中进行）
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+    # SSH 守护进程需要 /run/sshd 目录
+    && mkdir -p /run/sshd
+
+# --------------------------------------------------------------------
+# 第六阶段：设置入口点和默认命令
+# --------------------------------------------------------------------
+# 拷贝启动脚本并赋予执行权限
+COPY ./entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# 暴露 Apache 的 80 端口
 EXPOSE 80
+
+# 定义容器入口点
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# 默认执行的命令，交由 entrypoint 脚本的末尾执行
+# -n 参数让 supervisord 在前台运行，这是容器化所必须的
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
