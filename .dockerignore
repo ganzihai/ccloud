@@ -1,0 +1,86 @@
+# Git相关
+.git
+.gitignore
+
+# 文档
+README.md
+*.md
+
+# IDE配置
+.vscode
+.idea
+.cursor
+.trae
+
+# 日志文件
+*.log
+logs/
+
+# 临时文件
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# PHP
+vendor/
+composer.lock
+
+# 数据目录
+data/
+*.sql
+*.db
+*.sqlite
+
+# 配置文件中的敏感信息
+*.env
+*.env.local
+*.env.production
+
+# 备份文件
+*.bak
+*.backup
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
+*.7z
