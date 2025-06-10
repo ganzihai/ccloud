@@ -9,8 +9,9 @@ FROM debian:bullseye-slim
 ARG DEBIAN_FRONTEND=noninteractive
 
 # 设置语言环境和路径的环境变量
-ENV NODE_VERSION=18.x
-ENV GO_VERSION=1.21.5
+ENV TZ=Asia/Shanghai
+ENV NODE_VERSION=22.x
+ENV GO_VERSION=1.24.4
 ENV PATH="/usr/local/go/bin:${PATH}"
 
 # ------------------------------------------------------------------------------
