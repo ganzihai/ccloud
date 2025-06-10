@@ -1,68 +1,93 @@
 #!/bin/bash
 set -e
 
-# --- 1. Set SSH Password ---
-if [ -n "$SSH_PASSWORD" ]; then
-    echo "INFO: Root password is being set from the SSH_PASSWORD environment variable."
-    PASSWORD=$SSH_PASSWORD
+#==============================================================================
+# 1. 配置 SSH 用户与密码
+#==============================================================================
+echo "[入口点脚本] 正在设置 SSH 用户 'admin'..."
+# 创建一个名为 'admin' 的非 root 用户，并赋予 sudo 权限
+useradd -m -s /bin/bash admin || echo "用户 admin 已存在"
+usermod -aG sudo admin
+
+# 从环境变量 SSH_PASSWORD 设置密码，如果变量未设置，则使用默认值
+SSH_USER_PASSWORD=${SSH_PASSWORD:-admin123}
+echo "admin:${SSH_USER_PASSWORD}" | chpasswd
+echo "[入口点脚本] SSH 用户 'admin' 的密码已设置。"
+
+#==============================================================================
+# 2. 首次运行时初始化 MYSQL 数据库
+#==============================================================================
+# 检查 mysql 数据目录是否已被初始化
+if [ ! -d "/var/www/html/mysql/mysql" ]; then
+    echo "[入口点脚本] 首次运行 MySQL，正在 /var/www/html/mysql 目录中初始化数据库..."
+
+    # 确保目录存在并为 'mysql' 用户设置正确权限
+    mkdir -p /var/www/html/mysql
+    chown -R mysql:mysql /var/www/html/mysql
+
+    # 初始化数据库。--initialize-insecure 会创建一个无密码的 root 用户。
+    mysqld --initialize-insecure --user=mysql --datadir=/var/www/html/mysql
+
+    echo "[入口点脚本] MySQL 数据库初始化完成。正在启动临时服务以设置密码..."
+
+    # 在后台启动 MySQL 服务
+    mysqld --user=mysql --datadir=/var/www/html/mysql &
+    MYSQL_PID=$!
+
+    # 等待服务就绪
+    retries=30
+    while ! mysqladmin ping --silent && [ $retries -gt 0 ]; do
+        echo "正在等待 MySQL 服务启动... (剩余尝试次数: $retries)"
+        sleep 2
+        retries=$((retries-1))
+    done
+    if [ $retries -eq 0 ]; then
+        echo "[错误] MySQL 服务启动失败。"
+        exit 1
+    fi
+
+    echo "[入口点脚本] MySQL 服务已启动。正在进行安全设置..."
+
+    # 从环境变量设置密码，如果未提供则使用默认值
+    MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_password}
+    MACCMS_DB_NAME=${MACCMS_DB_NAME:-maccms}
+    MACCMS_DB_USER=${MACCMS_DB_USER:-maccms_user}
+    MACCMS_DB_PASSWORD=${MACCMS_DB_PASSWORD:-maccms_password}
+
+    # 设置 root 密码并创建 maccms 数据库和用户
+    mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_ROOT_PASSWORD}';"
+    mysql -e "CREATE DATABASE IF NOT EXISTS \`${MACCMS_DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    mysql -e "CREATE USER IF NOT EXISTS '${MACCMS_DB_USER}'@'%' IDENTIFIED BY '${MACCMS_DB_PASSWORD}';"
+    mysql -e "GRANT ALL PRIVILEGES ON \`${MACCMS_DB_NAME}\`.* TO '${MACCMS_DB_USER}'@'%';"
+    mysql -e "FLUSH PRIVILEGES;"
+
+    echo "[入口点脚本] MySQL 的 root 密码以及 maccms 数据库/用户已创建。"
+    echo "  - Root 密码: ${MYSQL_ROOT_PASSWORD}"
+    echo "  - Maccms 数据库: ${MACCMS_DB_NAME}, 用户: ${MACCMS_DB_USER}, 密码: ${MACCMS_DB_PASSWORD}"
+
+    # 关闭临时服务
+    mysqladmin -u root -p"${MYSQL_ROOT_PASSWORD}" shutdown
+    wait $MYSQL_PID
+    echo "[入口点脚本] MySQL 初始化流程完成。"
 else
-    echo "INFO: SSH_PASSWORD environment variable not set. Using default password 'admin123'."
-    PASSWORD="admin123"
+    echo "[入口点脚本] MySQL 数据库已存在，跳过初始化步骤。"
 fi
-echo "root:$PASSWORD" | chpasswd
-echo "INFO: SSH root password has been set."
 
-# --- 2. Create Runtime Directories ---
-echo "INFO: Creating runtime directories..."
-mkdir -p /var/run/sshd
 
-# --- 3. Create All Necessary Persistent Directories ---
-echo "INFO: Ensuring all persistent directories exist..."
-mkdir -p /var/www/html/cloudsaver_data
-mkdir -p /var/www/html/mysql_data
-mkdir -p /var/www/html/logs
-mkdir -p /var/www/html/supervisor/conf.d
+#==============================================================================
+# 3. 设置目录权限
+#==============================================================================
+echo "[入口点脚本] 正在设置最终的目录权限..."
+# Apache/PHP 需要对 maccms 目录有写入权限
+chown -R www-data:www-data /var/www/html/maccms
+
+# 确保其他受管理的目录存在
 mkdir -p /var/www/html/cron
-mkdir -p /var/www/html/maccms
+mkdir -p /var/www/html/supervisor/conf.d
 
-# --- 4. Prepare CloudSaver Environment ---
-echo "INFO: Preparing CloudSaver environment..."
-PERSISTENT_ENV_FILE="/var/www/html/cloudsaver_data/.env"
-SYMLINK_PATH="/opt/cloudsaver/.env"
-
-if [ ! -f "$PERSISTENT_ENV_FILE" ]; then
-    echo "INFO: No existing .env file found. Creating a default one..."
-    echo "JWT_SECRET=your_jwt_secret_here" > "$PERSISTENT_ENV_FILE"
-    echo "IMPORTANT: The default .env file has been created at $PERSISTENT_ENV_FILE. Please edit it to set a real JWT_SECRET!"
-else
-    echo "INFO: Existing .env file found. Skipping creation."
-fi
-ln -sfn "$PERSISTENT_ENV_FILE" "$SYMLINK_PATH"
-echo "INFO: CloudSaver is now linked to the persistent .env file."
-
-# --- 5. Initialize MySQL Database ---
-if [ -z "$(ls -A /var/www/html/mysql_data)" ]; then
-    echo "INFO: MySQL data directory is empty. Initializing database..."
-    mysqld --initialize-insecure --user=mysql --datadir=/var/www/html/mysql_data
-    echo "INFO: Database initialized."
-else
-    echo "INFO: MySQL data directory already exists. Skipping initialization."
-fi
-
-# --- 6. Copy .htaccess 文件到 Maccms 目录 ---
-echo "INFO: Setting up .htaccess for Maccms..."
-if [ -f "/maccms-htaccess.txt" ]; then
-    cp /maccms-htaccess.txt /var/www/html/maccms/.htaccess
-    echo "INFO: .htaccess file has been copied to Maccms directory."
-fi
-
-# --- 7. Set Final Permissions (FIX for Maccms) ---
-echo "INFO: Setting final permissions for persistent volume..."
-# This chowns the entire directory, including the maccms subdirectory
-chown -R www-data:www-data /var/www/html
-chown -R mysql:mysql /var/www/html/mysql_data
-echo "INFO: Permissions set."
-
-# --- 8. Start All Services ---
-echo "INFO: Starting all services via Supervisor..."
+#==============================================================================
+# 4. 执行容器的主命令
+#==============================================================================
+echo "[入口点脚本] 所有任务完成，现在将控制权交给 Supervisor..."
+# 执行 Dockerfile 中 CMD 定义的命令 (或者传递给 `docker run` 的命令)
 exec "$@"
