@@ -1,76 +1,113 @@
-# =========================================================================
-# STAGE 1: Reference the CloudSaver image
-# =========================================================================
-FROM jiangrui1994/cloudsaver:latest AS cloudsaver_stage
+# Dockerfile (优化版)
+# ------------------------------------------------------------------------------
+# 阶段 1: 基础镜像选择
+# 优化点: 使用 debian:bullseye-slim 代替 ubuntu:20.04，体积显著减小，且兼容 apt。
+# ------------------------------------------------------------------------------
+FROM debian:bullseye-slim
 
-# =========================================================================
-# STAGE 2: Main build stage for the fat image (FINAL SHOWSTOPPER FIX)
-# =========================================================================
-FROM ubuntu:22.04
-
-# --- Environment and Arguments ---
+# 避免在构建过程中出现交互式提示
 ARG DEBIAN_FRONTEND=noninteractive
+
+# 设置语言环境和路径的环境变量
 ENV TZ=Asia/Shanghai
-ENV LANG C.UTF-8
-ENV LC_ALL C.UTF-8
-
-# --- 1. Install Base Packages & Dependencies ---
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    software-properties-common git openssh-server sudo curl wget cron nano tar gzip unzip sshpass \
-    python3 python3-pip python3-dev build-essential \
-    apache2 supervisor mysql-server && \
-    rm -rf /var/lib/apt/lists/*
-
-# --- 2. Install Go Language Environment ---
-RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz -O /tmp/go.tar.gz && \
-    tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz
+ENV NODE_VERSION=22.x
+ENV GO_VERSION=1.24.4
 ENV PATH="/usr/local/go/bin:${PATH}"
 
-# --- 3. Install Node.js Environment (LTS) ---
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
-    apt-get install -y --no-install-recommends nodejs && \
-    rm -rf /var/lib/apt/lists/*
+# ------------------------------------------------------------------------------
+# 阶段 2: 核心依赖安装
+# 优化点: 将所有 apt 安装合并到一个 RUN 指令中，以减少镜像层数。
+# 优化点: 始终使用 --no-install-recommends 减少不必要的包安装。
+# 优化点: 在指令的最后彻底清理 apt 缓存。
+# ------------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # 基础工具
+    software-properties-common \
+    ca-certificates \
+    apt-transport-https \
+    curl \
+    wget \
+    git \
+    sudo \
+    nano \
+    tar \
+    gzip \
+    unzip \
+    sshpass \
+    # 用于定时任务文件监控
+    inotify-tools \
+    # 用于SSH服务
+    openssh-server \
+    # 用于服务管理
+    supervisor \
+    # 用于MySQL数据库 (Debian中包名为 default-mysql-server)
+    default-mysql-server \
+    # Python环境
+    python3 \
+    python3-pip \
+    python3-venv \
+    # Node.js PPA 需要的依赖
+    gnupg \
+    # 安装 PHP PPA 源 (ondrej/php)
+    && curl -sSLo /usr/share/keyrings/deb.sury.org-php.gpg https://packages.sury.org/php/apt.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/deb.sury.org-php.gpg] https://packages.sury.org/php/ $(lsb_release -sc) main" > /etc/apt/sources.list.d/php.list \
+    # 安装 Node.js PPA 源
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_VERSION} $(lsb_release -sc) main" > /etc/apt/sources.list.d/nodesource.list \
+    # 再次更新以加载新的 PPA 源
+    && apt-get update \
+    # 安装 PHP, Node.js 及相关扩展
+    && apt-get install -y --no-install-recommends \
+    apache2 \
+    libapache2-mod-php7.4 \
+    php7.4 \
+    php7.4-cli \
+    php7.4-common \
+    php7.4-mysql \
+    php7.4-gd \
+    php7.4-mbstring \
+    php7.4-curl \
+    php7.4-xml \
+    php7.4-zip \
+    php7.4-bcmath \
+    nodejs \
+    # 优化点: 在单个 RUN 指令的末尾执行清理操作
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# --- 4. Install PHP 7.4 and Extensions ---
-RUN add-apt-repository ppa:ondrej/php -y && apt-get update && \
-    apt-get install -y --no-install-recommends \
-    php7.4 php7.4-mysql php7.4-gd php7.4-curl php7.4-mbstring php7.4-xml php7.4-zip \
-    php7.4-bcmath php7.4-soap php7.4-intl php7.4-readline libapache2-mod-php7.4 && \
-    rm -rf /var/lib/apt/lists/*
+# ------------------------------------------------------------------------------
+# 阶段 3: 语言与服务配置
+# ------------------------------------------------------------------------------
+# 配置 Apache
+RUN a2enmod rewrite \
+    && sed -i 's|/var/www/html|/var/www/html/maccms|g' /etc/apache2/sites-available/000-default.conf \
+    && sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
 
-# --- 5. Integrate CloudSaver (FINAL FIX: Rebuild native modules) ---
-COPY --from=cloudsaver_stage /app /opt/cloudsaver/
-# Remove the incompatible Alpine-compiled modules and rebuild them on Ubuntu
-RUN cd /opt/cloudsaver && \
-    rm -rf node_modules && \
-    npm install --omit=dev
+# 安装 Go 语言
+# 优化点: 在同一层中下载、解压并删除临时文件
+RUN wget "https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz
 
-# --- 6. Configure Services ---
+# 配置 SSH
+RUN mkdir -p /var/run/sshd \
+    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+# 配置 MySQL
+# Debian/MariaDB 的数据目录配置方式略有不同，但原理一致
+RUN sed -i 's|^datadir.*|datadir = /var/www/html/mysql|' /etc/mysql/mariadb.conf.d/50-server.cnf \
+    && sed -i 's|^user.*|user = mysql\n\ndatadir = /var/www/html/mysql|' /etc/mysql/my.cnf || true
+
+# 配置 Supervisor
 COPY supervisord.conf /etc/supervisor/supervisord.conf
-RUN mkdir -p /var/log/supervisor
 
-# --- 6.1 Configure Apache ---
-RUN a2enmod rewrite proxy proxy_http headers
-COPY apache-maccms.conf /etc/apache2/sites-available/000-default.conf
-COPY maccms-htaccess.txt /maccms-htaccess.txt
-RUN mkdir -p /var/www/html/maccms && \
-    chown -R www-data:www-data /var/www/html && \
-    echo "ServerName localhost" >> /etc/apache2/apache2.conf
-
-# --- FIX for SSH Password Login ---
-RUN sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-
-# --- Configure MySQL ---
-RUN sed -i 's|datadir\s*=\s*/var/lib/mysql|datadir = /var/www/html/mysql_data|' /etc/mysql/mysql.conf.d/mysqld.cnf && \
-    sed -i 's|#bind-address\s*=\s*127.0.0.1|bind-address = 127.0.0.1|' /etc/mysql/mysql.conf.d/mysqld.cnf
-
-# --- 7. Setup Scripts and Entrypoint ---
+# ------------------------------------------------------------------------------
+# 阶段 4: 入口点与最终设置
+# ------------------------------------------------------------------------------
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# --- 8. Final Steps ---
 EXPOSE 80
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
