@@ -67,25 +67,33 @@ COPY ./maccms.conf /etc/apache2/sites-available/maccms.conf
 RUN a2dissite 000-default.conf && a2ensite maccms.conf && a2enmod rewrite
 
 # --------------------------------------------------------------------
-# 第四阶段：安装并配置 MySQL 
+# 第四阶段：安装并配置 MySQL (修正版，防止构建挂起)
 # --------------------------------------------------------------------
-# 设置 MySQL root 用户的免密登录，方便后续脚本操作
-RUN mkdir -p /etc/mysql/conf.d \
-    && echo '[mysqld]' > /etc/mysql/conf.d/disable_auth.cnf \
-    && echo 'skip-grant-tables' >> /etc/mysql/conf.d/disable_auth.cnf
-
-# 通过 policy-rc.d 阻止服务在安装时自动启动，这是 Dockerfile 最佳实践
-RUN echo 'exit 101' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d
-
-# 安装 MySQL 服务
-RUN apt-get update && apt-get install -y --no-install-recommends mysql-server \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# 安装完成后，移除策略文件，以免影响容器运行
-RUN rm /usr/sbin/policy-rc.d
-
-# 修改 MySQL 默认数据目录，指向持久化卷
-RUN sed -i 's|/var/lib/mysql|/var/www/html/mysql|g' /etc/mysql/mysql.conf.d/mysqld.cnf
+# 将所有与 MySQL 安装相关的操作合并到一个 RUN 命令中，以保证原子性和减少镜像层数
+RUN set -ex; \
+    # 1. 创建一个临时的策略文件，禁止所有服务在安装后自动启动
+    echo 'exit 101' > /usr/sbin/policy-rc.d; \
+    chmod +x /usr/sbin/policy-rc.d; \
+    \
+    # 2. 更新 apt 缓存并安装 mysql-server。
+    #    由于 policy-rc.d 的存在，安装脚本尝试启动 mysqld 的操作将会失败并被阻止。
+    apt-get update; \
+    apt-get install -y --no-install-recommends mysql-server; \
+    \
+    # 3. 任务完成，立即删除策略文件，以免影响容器的正常运行
+    rm -f /usr/sbin/policy-rc.d; \
+    \
+    # 4. 创建 MySQL 免密登录的配置文件
+    mkdir -p /etc/mysql/conf.d; \
+    echo '[mysqld]' > /etc/mysql/conf.d/disable_auth.cnf; \
+    echo 'skip-grant-tables' >> /etc/mysql/conf.d/disable_auth.cnf; \
+    \
+    # 5. 修改 MySQL 的默认数据目录，使其指向持久化卷
+    sed -i 's|/var/lib/mysql|/var/www/html/mysql|g' /etc/mysql/mysql.conf.d/mysqld.cnf; \
+    \
+    # 6. 清理 apt 缓存，减小镜像体积
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 # --------------------------------------------------------------------
 # 第五阶段：配置 Supervisor 和 SSH
 # --------------------------------------------------------------------
