@@ -75,14 +75,14 @@ RUN echo '[mysqld]\ndatadir=/var/www/html/mysql\nsocket=/var/run/mysqld/mysqld.s
 RUN mkdir -p /var/run/mysqld && chown mysql:mysql /var/run/mysqld
 
 # 安装Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装Go语言环境
-RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz \
-    && rm go1.24.4.linux-amd64.tar.gz
+RUN wget https://golang.org/dl/go1.17.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.17.linux-amd64.tar.gz \
+    && rm go1.17.linux-amd64.tar.gz
 
 # 安装Python
 RUN apt-get update && apt-get install -y \
@@ -125,6 +125,13 @@ nodaemon=true\n\
 logfile=/var/log/supervisor/supervisord.log\n\
 pidfile=/var/run/supervisord.pid\n\
 user=root\n\
+\n\
+[unix_http_server]\n\
+file=/var/run/supervisor.sock\n\
+chmod=0700\n\
+\n\
+[supervisorctl]\n\
+serverurl=unix:///var/run/supervisor.sock\n\
 \n\
 [include]\n\
 files=/var/www/html/supervisor/conf.d/*.conf\n\
