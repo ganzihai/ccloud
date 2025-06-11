@@ -83,22 +83,25 @@ RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-available/000-default.conf &&
     echo '    CustomLog ${APACHE_LOG_DIR}/access.log combined' >> /etc/apache2/sites-available/000-default.conf && \
     echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf
 
-RUN echo "Listen 8008" >> /etc/apache2/ports.conf
-RUN echo '<VirtualHost *:8008>' > /etc/apache2/sites-available/cloudsaver.conf && \
+# ================================
+# 【关键修正】将cloudsaver的RewriteRule移动到<Directory>块内部
+# ================================
+RUN echo "Listen 8008" >> /etc/apache2/ports.conf && \
+    echo '<VirtualHost *:8008>' > /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ServerAdmin webmaster@localhost' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    DocumentRoot /var/www/html/cloudsaver/html' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ProxyPreserveHost On' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    ProxyPass /api http://127.0.0.1:8009/api' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    ProxyPassReverse /api http://127.0.0.1:8009/api' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    <Directory /var/www/html/cloudsaver/html>' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    ProxyPass /api/ http://127.0.0.1:8009/api/' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    ProxyPassReverse /api/ http://127.0.0.1:8009/api/' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    <Directory /var/w ww/html/cloudsaver/html>' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        Options -Indexes +FollowSymLinks' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        AllowOverride All' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        Require all granted' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '        RewriteEngine On' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '        RewriteCond %{REQUEST_FILENAME} !-f' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '        RewriteCond %{REQUEST_FILENAME} !-d' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '        RewriteRule . /index.html [L]' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    </Directory>' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    RewriteEngine On' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    RewriteCond %{REQUEST_FILENAME} !-f' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    RewriteCond %{REQUEST_FILENAME} !-d' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    RewriteRule ^ /index.html [L]' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ErrorLog ${APACHE_LOG_DIR}/cloudsaver_error.log' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    CustomLog ${APACHE_LOG_DIR}/cloudsaver_access.log combined' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '</VirtualHost>' >> /etc/apache2/sites-available/cloudsaver.conf && \
@@ -106,6 +109,7 @@ RUN echo '<VirtualHost *:8008>' > /etc/apache2/sites-available/cloudsaver.conf &
     a2enmod proxy_http && \
     a2enmod rewrite && \
     a2ensite cloudsaver.conf
+
 # ================================
 # 第三阶段：数据库环境 (MySQL)
 # ================================
@@ -131,7 +135,7 @@ RUN sed -i 's|datadir.*=.*|datadir = /var/www/html/mysql|g' /etc/mysql/mysql.con
 # ================================
 FROM db-env as dev-env
 
-# 安装Python 3.8及pip
+# 安装Python 3.10及pip
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.10 \
@@ -140,8 +144,8 @@ RUN apt-get update && \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建Python符号链接
-RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
+# 【关键修正】创建正确的Python符号链接
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
 
 # 安装Node.js 22.x LTS
@@ -220,7 +224,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/start.sh && \
     echo 'echo "SSH root密码已设置"' >> /usr/local/bin/start.sh && \
     echo '' >> /usr/local/bin/start.sh && \
     echo '# 初始化MySQL数据目录（如果为空）' >> /usr/local/bin/start.sh && \
-    echo 'if [ ! -d "/var/www/html/mysql/mysql" ]; then' >> /usr/local/bin/start.sh && \
+    echo 'if [ ! -d "/var/w ww/html/mysql/mysql" ]; then' >> /usr/local/bin/start.sh && \
     echo '    echo "初始化MySQL数据目录..."' >> /usr/local/bin/start.sh && \
     echo '    mysqld --initialize-insecure --user=mysql --datadir=/var/www/html/mysql' >> /usr/local/bin/start.sh && \
     echo '    echo "MySQL数据目录初始化完成"' >> /usr/local/bin/start.sh && \
