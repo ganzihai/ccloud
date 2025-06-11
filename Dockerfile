@@ -2,7 +2,7 @@
 # 使用多阶段构建以减小最终镜像大小
 
 # 第一阶段：基础构建环境
-FROM ubuntu:20.04 AS builder
+FROM ubuntu:22.04 AS builder
 
 # 避免交互式前端
 ENV DEBIAN_FRONTEND=noninteractive
@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 第二阶段：最终镜像
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 # 避免交互式前端
 ENV DEBIAN_FRONTEND=noninteractive
