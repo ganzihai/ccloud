@@ -1,30 +1,18 @@
-# 基于Ubuntu 20.04的集合性镜像
-# 使用多阶段构建以减小最终镜像大小
+# 多阶段构建 - 基于Ubuntu 22.04的集成开发环境镜像
+# 严格遵循项目规范：单一镜像架构，单一卷持久化(/var/www/html/)
 
-# 第一阶段：基础构建环境
-FROM ubuntu:22.04 AS builder
+# ================================
+# 第一阶段：基础环境构建
+# ================================
+FROM ubuntu:22.04 as base
 
-# 避免交互式前端
+# 设置环境变量，避免交互式安装
 ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Shanghai
 
-# 更新apt源并安装基础构建工具
+# 更新系统并安装基础工具
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    wget \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# 第二阶段：最终镜像
-FROM ubuntu:22.04
-
-# 避免交互式前端
-ENV DEBIAN_FRONTEND=noninteractive
-
-# 设置时区为亚洲/上海
-RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-
-# 更新apt源并安装基本工具
-RUN apt-get update && apt-get install -y \
+    # 基础系统工具
     openssh-server \
     sudo \
     curl \
@@ -36,166 +24,269 @@ RUN apt-get update && apt-get install -y \
     unzip \
     sshpass \
     supervisor \
-    net-tools \
-    iputils-ping \
+    tzdata \
+    ca-certificates \
+    software-properties-common \
+    apt-transport-https \
+    gnupg2 \
+    lsb-release \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装Apache和PHP 7.4.33
-RUN apt-get update && apt-get install -y \
+# 设置时区
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# ================================
+# 第二阶段：Web服务环境 (Apache + PHP 7.4.33)
+# ================================
+FROM base as web-env
+
+# 添加PHP 7.4源并安装Apache和PHP
+RUN add-apt-repository ppa:ondrej/php && \
+    apt-get update && \
+    apt-get install -y \
+    # Apache Web服务器
     apache2 \
-    software-properties-common \
-    && add-apt-repository ppa:ondrej/php \
-    && apt-get update \
-    && apt-get install -y \
+    # PHP 7.4.33及常用扩展
     php7.4 \
-    php7.4-cli \
-    php7.4-common \
+    php7.4-fpm \
+    php7.4-mysql \
     php7.4-curl \
     php7.4-gd \
-    php7.4-json \
     php7.4-mbstring \
-    php7.4-mysql \
     php7.4-xml \
     php7.4-zip \
-    php7.4-fpm \
+    php7.4-json \
+    php7.4-opcache \
+    php7.4-readline \
+    php7.4-common \
+    php7.4-cli \
     libapache2-mod-php7.4 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装MySQL
-RUN apt-get update && apt-get install -y \
-    mysql-server \
-    && rm -rf /var/lib/apt/lists/*
-
-# 配置MySQL数据目录
-RUN mkdir -p /var/www/html/mysql
-RUN chown -R mysql:mysql /var/www/html/mysql
-# 创建MySQL配置文件
-RUN mkdir -p /etc/mysql/mysql.conf.d/
-RUN echo '[mysqld]\ndatadir=/var/www/html/mysql\nsocket=/var/run/mysqld/mysqld.sock\nuser=mysql\nsymbolic-links=0\n' > /etc/mysql/mysql.conf.d/mysqld.cnf
-RUN mkdir -p /var/run/mysqld && chown mysql:mysql /var/run/mysqld
-
-# 安装Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
-
-# 安装Go语言环境
-RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz \
-    && tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz \
-    && rm go1.24.4.linux-amd64.tar.gz
-
-# 安装Python
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    && ln -s /usr/bin/python3 /usr/bin/python \
-    && rm -rf /var/lib/apt/lists/*
-
-# 配置环境变量
-ENV PATH="/usr/local/go/bin:${PATH}"
-
-# 配置SSH允许root登录
-RUN mkdir -p /var/run/sshd
-RUN echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
-
-# 创建必要的目录
-RUN mkdir -p /var/www/html/maccms
-RUN mkdir -p /var/www/html/cron
-RUN mkdir -p /var/www/html/supervisor/conf.d
-
-# 配置Apache虚拟主机
-RUN echo '<VirtualHost *:80>\n\
-    DocumentRoot /var/www/html/maccms\n\
-    <Directory /var/www/html/maccms>\n\
-        Options Indexes FollowSymLinks\n\
-        AllowOverride All\n\
-        Require all granted\n\
-    </Directory>\n\
-    ErrorLog ${APACHE_LOG_DIR}/error.log\n\
-    CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
-</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
-
 # 启用Apache模块
-RUN a2enmod rewrite
-RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+RUN a2enmod rewrite && \
+    a2enmod php7.4 && \
+    a2enmod ssl && \
+    a2enmod headers
 
-# 权限设置
-RUN chown -R mysql:mysql /var/www/html/mysql \
-    && chmod -R 750 /var/www/html/mysql \
-    && chown -R www-data:www-data /var/www/html/maccms \
-    && chmod -R 755 /var/www/html/maccms \
-    && chown -R root:root /var/www/html/supervisor \
-    && chmod -R 755 /var/www/html/supervisor
+# 配置Apache虚拟主机，根目录指向/var/www/html/maccms/
+RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-available/000-default.conf && \
+    echo '    ServerAdmin webmaster@localhost' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    DocumentRoot /var/www/html/maccms' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    <Directory /var/www/html/maccms>' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '        Options Indexes FollowSymLinks' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '        AllowOverride All' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '        Require all granted' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    </Directory>' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    ErrorLog ${APACHE_LOG_DIR}/error.log' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '    CustomLog ${APACHE_LOG_DIR}/access.log combined' >> /etc/apache2/sites-available/000-default.conf && \
+    echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf
 
-# 配置Supervisor
-RUN echo '[supervisord]\n\
-nodaemon=true\n\
-logfile=/var/log/supervisor/supervisord.log\n\
-pidfile=/var/run/supervisord.pid\n\
-user=root\n\
-\n\
-[unix_http_server]\n\
-file=/var/run/supervisor.sock\n\
-chmod=0700\n\
-\n\
-[supervisorctl]\n\
-serverurl=unix:///var/run/supervisor.sock\n\
-\n\
-[include]\n\
-files=/var/www/html/supervisor/conf.d/*.conf\n\
-\n\
-[program:apache2]\n\
-command=/usr/sbin/apache2ctl -D FOREGROUND\n\
-autostart=true\n\
-autorestart=true\n\
-\n\
-[program:mysql]\n\
-command=/usr/sbin/mysqld --user=mysql --datadir=/var/www/html/mysql\n\
-autostart=true\n\
-autorestart=true\n\
-\n\
-[program:sshd]\n\
-command=/usr/sbin/sshd -D\n\
-autostart=true\n\
-autorestart=true\n\
-\n\
-[program:cron]\n\
-command=/usr/sbin/cron -f\n\
-autostart=true\n\
-autorestart=true' > /etc/supervisor/conf.d/supervisord.conf
+# ================================
+# 第三阶段：数据库环境 (MySQL)
+# ================================
+FROM web-env as db-env
+
+# 安装MySQL服务器
+RUN apt-get update && \
+    echo 'mysql-server mysql-server/root_password password temp_password' | debconf-set-selections && \
+    echo 'mysql-server mysql-server/root_password_again password temp_password' | debconf-set-selections && \
+    apt-get install -y mysql-server && \
+    rm -rf /var/lib/apt/lists/*
+
+# 配置MySQL数据目录到持久化路径
+RUN mkdir -p /var/www/html/mysql && \
+    chown mysql:mysql /var/www/html/mysql
+
+# 修改MySQL配置文件，指定数据目录
+RUN sed -i 's|datadir.*=.*|datadir = /var/www/html/mysql|g' /etc/mysql/mysql.conf.d/mysqld.cnf && \
+    sed -i 's|bind-address.*=.*|bind-address = 0.0.0.0|g' /etc/mysql/mysql.conf.d/mysqld.cnf
+
+# ================================
+# 第四阶段：开发环境 (Python + Node.js + Go)
+# ================================
+FROM db-env as dev-env
+
+# 安装Python 3.8及pip
+RUN apt-get update && \
+    apt-get install -y \
+    python3.8 \
+    python3.8-dev \
+    python3-pip \
+    python3.8-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# 创建Python符号链接
+RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# 安装Node.js 22.x LTS
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# 安装Go语言环境 (最新稳定版)
+RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz && \
+    rm go1.24.4.linux-amd64.tar.gz
+
+# 设置Go环境变量
+ENV PATH=$PATH:/usr/local/go/bin
+ENV GOPATH=/var/www/html/go
+ENV GOPROXY=https://goproxy.cn,direct
+
+# ================================
+# 第五阶段：最终镜像配置
+# ================================
+FROM dev-env as final
+
+# 配置SSH服务
+RUN mkdir /var/run/sshd && \
+    # 允许root登录
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    # 禁用PAM
+    sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd && \
+    # 设置SSH端口
+    echo 'Port 22' >> /etc/ssh/sshd_config
+
+# 创建必要的持久化目录结构
+RUN mkdir -p /var/www/html/maccms && \
+    mkdir -p /var/www/html/cron && \
+    mkdir -p /var/www/html/supervisor/conf.d && \
+    mkdir -p /var/www/html/mysql && \
+    mkdir -p /var/www/html/go && \
+    mkdir -p /var/www/html/python_venv && \
+    mkdir -p /var/www/html/node_modules && \
+    mkdir -p /var/www/html/ssl && \
+    mkdir -p /var/log/supervisor
+
+# 设置目录权限
+RUN chown -R www-data:www-data /var/www/html && \
+    chown mysql:mysql /var/www/html/mysql && \
+    chmod 755 /var/www/html
+
+# 配置Supervisor主配置文件
+RUN echo '[unix_http_server]' > /etc/supervisor/supervisord.conf && \
+    echo 'file=/var/run/supervisor.sock' >> /etc/supervisor/supervisord.conf && \
+    echo 'chmod=0700' >> /etc/supervisor/supervisord.conf && \
+    echo '' >> /etc/supervisor/supervisord.conf && \
+    echo '[supervisord]' >> /etc/supervisor/supervisord.conf && \
+    echo 'logfile=/var/log/supervisor/supervisord.log' >> /etc/supervisor/supervisord.conf && \
+    echo 'pidfile=/var/run/supervisord.pid' >> /etc/supervisor/supervisord.conf && \
+    echo 'childlogdir=/var/log/supervisor' >> /etc/supervisor/supervisord.conf && \
+    echo 'nodaemon=true' >> /etc/supervisor/supervisord.conf && \
+    echo 'user=root' >> /etc/supervisor/supervisord.conf && \
+    echo '' >> /etc/supervisor/supervisord.conf && \
+    echo '[rpcinterface:supervisor]' >> /etc/supervisor/supervisord.conf && \
+    echo 'supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface' >> /etc/supervisor/supervisord.conf && \
+    echo '' >> /etc/supervisor/supervisord.conf && \
+    echo '[supervisorctl]' >> /etc/supervisor/supervisord.conf && \
+    echo 'serverurl=unix:///var/run/supervisor.sock' >> /etc/supervisor/supervisord.conf && \
+    echo '' >> /etc/supervisor/supervisord.conf && \
+    echo '[include]' >> /etc/supervisor/supervisord.conf && \
+    echo 'files = /var/www/html/supervisor/conf.d/*.conf' >> /etc/supervisor/supervisord.conf
+
+# 创建默认的Supervisor服务配置文件
+# Apache服务配置
+RUN echo '[program:apache2]' > /var/www/html/supervisor/conf.d/apache2.conf && \
+    echo 'command=/bin/bash -c "sleep 30 && /usr/sbin/apache2ctl -D FOREGROUND"' >> /var/www/html/supervisor/conf.d/apache2.conf && \
+    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/apache2.conf && \
+    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/apache2.conf && \
+    echo 'priority=10' >> /var/www/html/supervisor/conf.d/apache2.conf && \
+    echo 'stdout_logfile=/var/log/supervisor/apache2.log' >> /var/www/html/supervisor/conf.d/apache2.conf && \
+    echo 'stderr_logfile=/var/log/supervisor/apache2_error.log' >> /var/www/html/supervisor/conf.d/apache2.conf
+
+# MySQL服务配置
+RUN echo '[program:mysql]' > /var/www/html/supervisor/conf.d/mysql.conf && \
+    echo 'command=/bin/bash -c "sleep 20 && /usr/bin/mysqld_safe --datadir=/var/www/html/mysql"' >> /var/www/html/supervisor/conf.d/mysql.conf && \
+    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/mysql.conf && \
+    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/mysql.conf && \
+    echo 'priority=5' >> /var/www/html/supervisor/conf.d/mysql.conf && \
+    echo 'stdout_logfile=/var/log/supervisor/mysql.log' >> /var/www/html/supervisor/conf.d/mysql.conf && \
+    echo 'stderr_logfile=/var/log/supervisor/mysql_error.log' >> /var/www/html/supervisor/conf.d/mysql.conf
+
+# SSH服务配置
+RUN echo '[program:sshd]' > /var/www/html/supervisor/conf.d/sshd.conf && \
+    echo 'command=/bin/bash -c "sleep 10 && /usr/sbin/sshd -D"' >> /var/www/html/supervisor/conf.d/sshd.conf && \
+    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/sshd.conf && \
+    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/sshd.conf && \
+    echo 'priority=15' >> /var/www/html/supervisor/conf.d/sshd.conf && \
+    echo 'stdout_logfile=/var/log/supervisor/sshd.log' >> /var/www/html/supervisor/conf.d/sshd.conf && \
+    echo 'stderr_logfile=/var/log/supervisor/sshd_error.log' >> /var/www/html/supervisor/conf.d/sshd.conf
+
+# Cron服务配置
+RUN echo '[program:cron]' > /var/www/html/supervisor/conf.d/cron.conf && \
+    echo 'command=/bin/bash -c "sleep 35 && /usr/sbin/cron -f"' >> /var/www/html/supervisor/conf.d/cron.conf && \
+    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/cron.conf && \
+    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/cron.conf && \
+    echo 'priority=25' >> /var/www/html/supervisor/conf.d/cron.conf && \
+    echo 'stdout_logfile=/var/log/supervisor/cron.log' >> /var/www/html/supervisor/conf.d/cron.conf && \
+    echo 'stderr_logfile=/var/log/supervisor/cron_error.log' >> /var/www/html/supervisor/conf.d/cron.conf
 
 # 创建启动脚本
-RUN echo '#!/bin/bash\n\
-\n\
-# 设置root密码\n\
-if [ -n "$SSH_PASSWORD" ]; then\n\
-    echo "root:$SSH_PASSWORD" | chpasswd\n\
-else\n\
-    echo "root:admin123" | chpasswd\n\
-fi\n\
-\n\
-# 初始化MySQL数据目录（如果为空）\n\
-if [ ! "$(ls -A /var/www/html/mysql)" ]; then\n\
-    mkdir -p /var/www/html/mysql\n\
-    chown -R mysql:mysql /var/www/html/mysql\n\
-    mysqld --initialize-insecure --datadir=/var/www/html/mysql --user=mysql\n\
-    chown -R mysql:mysql /var/www/html/mysql\n\
-fi\n\
-\n\
-# 加载cron任务\n\
-if [ -f /var/www/html/cron/maccms_cron ]; then\n\
-    crontab /var/www/html/cron/maccms_cron\n\
-fi\n\
-\n\
-# 启动supervisor\n\
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' > /start.sh
+RUN echo '#!/bin/bash' > /usr/local/bin/start.sh && \
+    echo '# 容器启动脚本 - 遵循项目规范的初始化流程' >> /usr/local/bin/start.sh && \
+    echo '' >> /usr/local/bin/start.sh && \
+    echo '# 设置SSH root密码（通过环境变量SSH_PASSWORD传递，默认admin123）' >> /usr/local/bin/start.sh && \
+    echo 'SSH_PASSWORD=${SSH_PASSWORD:-admin123}' >> /usr/local/bin/start.sh && \
+    echo 'echo "root:$SSH_PASSWORD" | chpasswd' >> /usr/local/bin/start.sh && \
+    echo 'echo "SSH root密码已设置"' >> /usr/local/bin/start.sh && \
+    echo '' >> /usr/local/bin/start.sh && \
+    echo '# 初始化MySQL数据目录（如果为空）' >> /usr/local/bin/start.sh && \
+    echo 'if [ ! -d "/var/www/html/mysql/mysql" ]; then' >> /usr/local/bin/start.sh && \
+    echo '    echo "初始化MySQL数据目录..."' >> /usr/local/bin/start.sh && \
+    echo '    mysqld --initialize-insecure --user=mysql --datadir=/var/www/html/mysql' >> /usr/local/bin/start.sh && \
+    echo '    echo "MySQL数据目录初始化完成"' >> /usr/local/bin/start.sh && \
+    echo 'fi' >> /usr/local/bin/start.sh && \
+    echo '' >> /usr/local/bin/start.sh && \
+    echo '# 加载cron任务（从持久化目录）' >> /usr/local/bin/start.sh && \
+    echo 'if [ -f "/var/www/html/cron/maccms_cron" ]; then' >> /usr/local/bin/start.sh && \
+    echo '    echo "加载cron任务..."' >> /usr/local/bin/start.sh && \
+    echo '    crontab /var/www/html/cron/maccms_cron' >> /usr/local/bin/start.sh && \
+    echo '    echo "cron任务加载完成"' >> /usr/local/bin/start.sh && \
+    echo 'else' >> /usr/local/bin/start.sh && \
+    echo '    echo "警告: /var/www/html/cron/maccms_cron 文件不存在"' >> /usr/local/bin/start.sh && \
+    echo 'fi' >> /usr/local/bin/start.sh && \
+    echo '' >> /usr/local/bin/start.sh && \
+    echo '# 启动cron任务监控脚本（后台运行）' >> /usr/local/bin/start.sh && \
+    echo '/usr/local/bin/cron_monitor.sh &' >> /usr/local/bin/start.sh && \
+    echo '' >> /usr/local/bin/start.sh && \
+    echo '# 启动Supervisor（前台运行）' >> /usr/local/bin/start.sh && \
+    echo 'echo "启动Supervisor服务管理器..."' >> /usr/local/bin/start.sh && \
+    echo 'exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf' >> /usr/local/bin/start.sh && \
+    chmod +x /usr/local/bin/start.sh
 
-# 设置执行权限
-RUN chmod +x /start.sh
+# 创建cron任务监控脚本（实时同步maccms_cron文件变化）
+RUN echo '#!/bin/bash' > /usr/local/bin/cron_monitor.sh && \
+    echo '# cron任务文件监控脚本 - 实时同步maccms_cron文件变化' >> /usr/local/bin/cron_monitor.sh && \
+    echo '' >> /usr/local/bin/cron_monitor.sh && \
+    echo 'CRON_FILE="/var/www/html/cron/maccms_cron"' >> /usr/local/bin/cron_monitor.sh && \
+    echo 'LAST_MODIFIED=""' >> /usr/local/bin/cron_monitor.sh && \
+    echo '' >> /usr/local/bin/cron_monitor.sh && \
+    echo 'echo "启动cron任务监控..."' >> /usr/local/bin/cron_monitor.sh && \
+    echo '' >> /usr/local/bin/cron_monitor.sh && \
+    echo 'while true; do' >> /usr/local/bin/cron_monitor.sh && \
+    echo '    if [ -f "$CRON_FILE" ]; then' >> /usr/local/bin/cron_monitor.sh && \
+    echo '        CURRENT_MODIFIED=$(stat -c %Y "$CRON_FILE" 2>/dev/null)' >> /usr/local/bin/cron_monitor.sh && \
+    echo '        if [ "$CURRENT_MODIFIED" != "$LAST_MODIFIED" ]; then' >> /usr/local/bin/cron_monitor.sh && \
+    echo '            echo "检测到cron文件变化，重新加载..."' >> /usr/local/bin/cron_monitor.sh && \
+    echo '            crontab "$CRON_FILE"' >> /usr/local/bin/cron_monitor.sh && \
+    echo '            LAST_MODIFIED="$CURRENT_MODIFIED"' >> /usr/local/bin/cron_monitor.sh && \
+    echo '            echo "cron任务已更新"' >> /usr/local/bin/cron_monitor.sh && \
+    echo '        fi' >> /usr/local/bin/cron_monitor.sh && \
+    echo '    fi' >> /usr/local/bin/cron_monitor.sh && \
+    echo '    sleep 30  # 每30秒检查一次' >> /usr/local/bin/cron_monitor.sh && \
+    echo 'done' >> /usr/local/bin/cron_monitor.sh && \
+    chmod +x /usr/local/bin/cron_monitor.sh
 
-# 暴露端口
+# 设置工作目录
+WORKDIR /var/www/html
+
+# 暴露端口（仅80端口，其他服务通过frpc穿透）
 EXPOSE 80
 
-# 设置启动命令
-CMD ["/start.sh"] 
+# 设置卷挂载点
+VOLUME ["/var/www/html"]
+
+# 容器启动命令
+CMD ["/usr/local/bin/start.sh"]
