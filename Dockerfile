@@ -87,14 +87,24 @@ RUN echo "Listen 8008" >> /etc/apache2/ports.conf
 RUN echo '<VirtualHost *:8008>' > /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ServerAdmin webmaster@localhost' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    DocumentRoot /var/www/html/cloudsaver/html' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    ProxyPreserveHost On' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    ProxyPass /api http://127.0.0.1:8009/api' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    ProxyPassReverse /api http://127.0.0.1:8009/api' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    <Directory /var/www/html/cloudsaver/html>' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        Options -Indexes +FollowSymLinks' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        AllowOverride All' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        Require all granted' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    </Directory>' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    RewriteEngine On' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    RewriteCond %{REQUEST_FILENAME} !-f' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    RewriteCond %{REQUEST_FILENAME} !-d' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    RewriteRule ^ /index.html [L]' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ErrorLog ${APACHE_LOG_DIR}/cloudsaver_error.log' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    CustomLog ${APACHE_LOG_DIR}/cloudsaver_access.log combined' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '</VirtualHost>' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    a2enmod proxy && \
+    a2enmod proxy_http && \
+    a2enmod rewrite && \
     a2ensite cloudsaver.conf
 # ================================
 # 第三阶段：数据库环境 (MySQL)
