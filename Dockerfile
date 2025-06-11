@@ -181,6 +181,6 @@ RUN echo '#!/bin/bash' > /usr/local/bin/cron_monitor.sh && \
     chmod +x /usr/local/bin/cron_monitor.sh
 
 WORKDIR /var/www/html
-EXPOSE 80
+EXPOSE 80 8008
 VOLUME ["/var/www/html"]
 CMD ["/usr/local/bin/start.sh"]
