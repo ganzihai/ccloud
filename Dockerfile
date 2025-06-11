@@ -17,6 +17,13 @@ FROM ubuntu:22.04 as base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
+# 关键修复：在这里显式创建所需的用户和组
+# 这可以保证在后续层中chown命令总是能找到这些用户，从而解决构建失败的问题。
+RUN groupadd --system www-data && \
+    useradd --system --gid www-data www-data && \
+    groupadd --system mysql && \
+    useradd --system --gid mysql mysql
+
 # 更新系统并安装基础工具 (已包含inotify-tools)
 RUN apt-get update && apt-get install -y \
     openssh-server sudo curl wget cron nano tar gzip unzip sshpass \
@@ -111,14 +118,14 @@ RUN mkdir /var/run/sshd && \
     sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd && \
     echo 'Port 22' >> /etc/ssh/sshd_config
 
-# 创建所有需要的目录 (已拆分，修复buildx错误)
+# 创建所有需要的目录
 RUN mkdir -p /var/www/html/{maccms,cron,supervisor/conf.d,mysql,go,python_venv,node_modules,ssl} && \
     mkdir -p /var/log/supervisor
 
 # 设置/var/www/html的整体所有权为www-data
 RUN chown -R www-data:www-data /var/www/html
 
-# 为MySQL目录设置特定的所有权
+# 为MySQL目录设置特定的所有权 (现在这一步会成功)
 RUN chown -R mysql:mysql /var/www/html/mysql
 
 # 赋予启动脚本执行权限
