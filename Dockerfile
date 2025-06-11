@@ -17,11 +17,11 @@ FROM ubuntu:22.04 as base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
-# 更新系统并安装基础工具
+# 更新系统并安装基础工具 (已包含inotify-tools)
 RUN apt-get update && apt-get install -y \
     openssh-server sudo curl wget cron nano tar gzip unzip sshpass \
     supervisor tzdata ca-certificates software-properties-common \
-    apt-transport-https gnupg2 lsb-release net-tools \
+    apt-transport-https gnupg2 lsb-release net-tools inotify-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置时区
@@ -86,7 +86,7 @@ RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
     rm go${GO_VERSION}.linux-amd64.tar.gz
 
-# 创建Python符号链接 (修正BUG)
+# 创建Python符号链接 (已修正BUG)
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
 
@@ -111,13 +111,18 @@ RUN mkdir /var/run/sshd && \
     sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd && \
     echo 'Port 22' >> /etc/ssh/sshd_config
 
-# 创建必要的持久化目录结构并设置权限
-RUN mkdir -p /var/www/html/{maccms,cron,supervisor/conf.d,mysql,go,python_venv,node_modules,ssl} \
-    && mkdir -p /var/log/supervisor \
-    && chown -R www-data:www-data /var/www/html \
-    && chown mysql:mysql /var/www/html/mysql \
-    && chmod 755 /var/www/html \
-    && chmod +x /usr/local/bin/start.sh /usr/local/bin/cron_monitor.sh
+# 创建所有需要的目录 (已拆分，修复buildx错误)
+RUN mkdir -p /var/www/html/{maccms,cron,supervisor/conf.d,mysql,go,python_venv,node_modules,ssl} && \
+    mkdir -p /var/log/supervisor
+
+# 设置/var/www/html的整体所有权为www-data
+RUN chown -R www-data:www-data /var/www/html
+
+# 为MySQL目录设置特定的所有权
+RUN chown -R mysql:mysql /var/www/html/mysql
+
+# 赋予启动脚本执行权限
+RUN chmod +x /usr/local/bin/start.sh /usr/local/bin/cron_monitor.sh
 
 # 设置工作目录
 WORKDIR /var/www/html
