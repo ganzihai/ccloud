@@ -118,7 +118,7 @@ RUN echo '<VirtualHost *:80>\n\
 
 # 启用Apache模块
 RUN a2enmod rewrite
-
+RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 # 配置Supervisor
 RUN echo '[supervisord]\n\
 nodaemon=true\n\
@@ -129,6 +129,9 @@ user=root\n\
 [unix_http_server]\n\
 file=/var/run/supervisor.sock\n\
 chmod=0700\n\
+\n\
+[rpcinterface:supervisor]\n\
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface\n\
 \n\
 [supervisorctl]\n\
 serverurl=unix:///var/run/supervisor.sock\n\
