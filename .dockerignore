@@ -1,26 +1,50 @@
-# Git相关
+# Docker 构建忽略文件
+# 优化构建上下文，减少构建时间
+
+# Git 相关
 .git
 .gitignore
+.gitattributes
 
-# 文档
+# 文档文件
 README.md
 *.md
 
-# IDE配置
-.vscode
-.idea
-.cursor
-.trae
+# 脚本文件 (构建时不需要)
+build.sh
+deploy.sh
 
-# 日志文件
-*.log
-logs/
+# Docker 相关
+docker-compose.yml
+.dockerignore
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
 
 # 临时文件
 *.tmp
 *.temp
-.DS_Store
-Thumbs.db
+*.log
+
+# 数据目录 (如果存在)
+data/
+
+# 备份文件
+*.bak
+*.backup
+
+# 压缩文件
+*.zip
+*.tar.gz
+*.rar
 
 # Node.js
 node_modules/
@@ -50,37 +74,11 @@ wheels/
 .installed.cfg
 *.egg
 
-# Go
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-go.work
-
 # PHP
 vendor/
 composer.lock
 
-# 数据目录
-data/
-*.sql
-*.db
-*.sqlite
-
-# 配置文件中的敏感信息
-*.env
-*.env.local
-*.env.production
-
-# 备份文件
-*.bak
-*.backup
-
-# 压缩文件
-*.zip
-*.tar.gz
-*.rar
-*.7z
+# 环境配置
+.env
+.env.local
+.env.*.local
