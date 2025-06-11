@@ -53,14 +53,14 @@ RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
     ln -sf /usr/bin/python3.8 /usr/bin/python3
 
 # 安装 Node.js 16.x LTS
-RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # 安装 Go 1.19
-RUN wget https://go.dev/dl/go1.19.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go1.19.linux-amd64.tar.gz && \
-    rm go1.19.linux-amd64.tar.gz
+RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz && \
+    rm go1.24.4.linux-amd64.tar.gz
 
 # 设置 Go 环境变量
 ENV PATH=$PATH:/usr/local/go/bin
