@@ -109,11 +109,11 @@ FROM db-env as dev-env
 
 # 安装Python 3.8及pip
 RUN apt-get update && \
-    apt-get install -y \
-    python3.8 \
-    python3.8-dev \
+    apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3.10-dev \
+    python3.10-venv \
     python3-pip \
-    python3.8-venv \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建Python符号链接
