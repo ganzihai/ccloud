@@ -123,7 +123,7 @@ RUN mkdir -p /var/www/html/{maccms,cron,supervisor/conf.d,mysql,go,python_venv,n
 WORKDIR /var/www/html
 
 # 暴露端口
-EXPOSE 80 8008
+EXPOSE 80
 
 # 设置卷挂载点
 VOLUME ["/var/www/html"]
