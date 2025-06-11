@@ -124,7 +124,8 @@ RUN ln -sf /usr/bin/python3.8 /usr/bin/python && \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
-
+# 安装http-server
+RUN npm install -g http-server
 # 安装Go语言环境 (最新稳定版)
 RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz && \
