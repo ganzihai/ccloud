@@ -186,43 +186,6 @@ RUN echo '[unix_http_server]' > /etc/supervisor/supervisord.conf && \
     echo '[include]' >> /etc/supervisor/supervisord.conf && \
     echo 'files = /var/www/html/supervisor/conf.d/*.conf' >> /etc/supervisor/supervisord.conf
 
-# 创建默认的Supervisor服务配置文件
-# Apache服务配置
-RUN echo '[program:apache2]' > /var/www/html/supervisor/conf.d/apache2.conf && \
-    echo 'command=/bin/bash -c "sleep 30 && /usr/sbin/apache2ctl -D FOREGROUND"' >> /var/www/html/supervisor/conf.d/apache2.conf && \
-    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/apache2.conf && \
-    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/apache2.conf && \
-    echo 'priority=10' >> /var/www/html/supervisor/conf.d/apache2.conf && \
-    echo 'stdout_logfile=/var/log/supervisor/apache2.log' >> /var/www/html/supervisor/conf.d/apache2.conf && \
-    echo 'stderr_logfile=/var/log/supervisor/apache2_error.log' >> /var/www/html/supervisor/conf.d/apache2.conf
-
-# MySQL服务配置
-RUN echo '[program:mysql]' > /var/www/html/supervisor/conf.d/mysql.conf && \
-    echo 'command=/bin/bash -c "sleep 20 && /usr/bin/mysqld_safe --datadir=/var/www/html/mysql"' >> /var/www/html/supervisor/conf.d/mysql.conf && \
-    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/mysql.conf && \
-    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/mysql.conf && \
-    echo 'priority=5' >> /var/www/html/supervisor/conf.d/mysql.conf && \
-    echo 'stdout_logfile=/var/log/supervisor/mysql.log' >> /var/www/html/supervisor/conf.d/mysql.conf && \
-    echo 'stderr_logfile=/var/log/supervisor/mysql_error.log' >> /var/www/html/supervisor/conf.d/mysql.conf
-
-# SSH服务配置
-RUN echo '[program:sshd]' > /var/www/html/supervisor/conf.d/sshd.conf && \
-    echo 'command=/bin/bash -c "sleep 10 && /usr/sbin/sshd -D"' >> /var/www/html/supervisor/conf.d/sshd.conf && \
-    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/sshd.conf && \
-    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/sshd.conf && \
-    echo 'priority=15' >> /var/www/html/supervisor/conf.d/sshd.conf && \
-    echo 'stdout_logfile=/var/log/supervisor/sshd.log' >> /var/www/html/supervisor/conf.d/sshd.conf && \
-    echo 'stderr_logfile=/var/log/supervisor/sshd_error.log' >> /var/www/html/supervisor/conf.d/sshd.conf
-
-# Cron服务配置
-RUN echo '[program:cron]' > /var/www/html/supervisor/conf.d/cron.conf && \
-    echo 'command=/bin/bash -c "sleep 35 && /usr/sbin/cron -f"' >> /var/www/html/supervisor/conf.d/cron.conf && \
-    echo 'autostart=true' >> /var/www/html/supervisor/conf.d/cron.conf && \
-    echo 'autorestart=true' >> /var/www/html/supervisor/conf.d/cron.conf && \
-    echo 'priority=25' >> /var/www/html/supervisor/conf.d/cron.conf && \
-    echo 'stdout_logfile=/var/log/supervisor/cron.log' >> /var/www/html/supervisor/conf.d/cron.conf && \
-    echo 'stderr_logfile=/var/log/supervisor/cron_error.log' >> /var/www/html/supervisor/conf.d/cron.conf
-
 # 创建启动脚本
 RUN echo '#!/bin/bash' > /usr/local/bin/start.sh && \
     echo '# 容器启动脚本 - 遵循项目规范的初始化流程' >> /usr/local/bin/start.sh && \
