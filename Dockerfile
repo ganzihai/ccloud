@@ -69,6 +69,10 @@ RUN apt-get update && apt-get install -y \
 # 配置MySQL数据目录
 RUN mkdir -p /var/www/html/mysql
 RUN chown -R mysql:mysql /var/www/html/mysql
+# 创建MySQL配置文件
+RUN mkdir -p /etc/mysql/mysql.conf.d/
+RUN echo '[mysqld]\ndatadir=/var/www/html/mysql\nsocket=/var/run/mysqld/mysqld.sock\nuser=mysql\nsymbolic-links=0\n' > /etc/mysql/mysql.conf.d/mysqld.cnf
+RUN mkdir -p /var/run/mysqld && chown mysql:mysql /var/run/mysqld
 
 # 安装Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
@@ -120,6 +124,7 @@ RUN echo '[supervisord]\n\
 nodaemon=true\n\
 logfile=/var/log/supervisor/supervisord.log\n\
 pidfile=/var/run/supervisord.pid\n\
+user=root\n\
 \n\
 [include]\n\
 files=/var/www/html/supervisor/conf.d/*.conf\n\
@@ -130,7 +135,7 @@ autostart=true\n\
 autorestart=true\n\
 \n\
 [program:mysql]\n\
-command=/usr/bin/mysqld_safe --datadir=/var/www/html/mysql\n\
+command=/usr/sbin/mysqld --user=mysql --datadir=/var/www/html/mysql\n\
 autostart=true\n\
 autorestart=true\n\
 \n\
@@ -156,7 +161,9 @@ fi\n\
 \n\
 # 初始化MySQL数据目录（如果为空）\n\
 if [ ! "$(ls -A /var/www/html/mysql)" ]; then\n\
-    mysqld --initialize-insecure --datadir=/var/www/html/mysql\n\
+    mkdir -p /var/www/html/mysql\n\
+    chown -R mysql:mysql /var/www/html/mysql\n\
+    mysqld --initialize-insecure --datadir=/var/www/html/mysql --user=mysql\n\
     chown -R mysql:mysql /var/www/html/mysql\n\
 fi\n\
 \n\
@@ -172,7 +179,7 @@ exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' > /start.s
 RUN chmod +x /start.sh
 
 # 暴露端口
-EXPOSE 80
+EXPOSE 22 80 3306
 
 # 设置启动命令
 CMD ["/start.sh"] 
