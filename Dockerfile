@@ -93,7 +93,7 @@ RUN echo "Listen 8008" >> /etc/apache2/ports.conf && \
     echo '    ProxyPreserveHost On' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ProxyPass /api/ http://127.0.0.1:8009/api/' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ProxyPassReverse /api/ http://127.0.0.1:8009/api/' >> /etc/apache2/sites-available/cloudsaver.conf && \
-    echo '    <Directory /var/w ww/html/cloudsaver/html>' >> /etc/apache2/sites-available/cloudsaver.conf && \
+    echo '    <Directory /var/www/html/cloudsaver/html>' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        Options -Indexes +FollowSymLinks' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        AllowOverride All' >> /etc/apache2/sites-available/cloudsaver.conf && \
     echo '        Require all granted' >> /etc/apache2/sites-available/cloudsaver.conf && \
@@ -224,7 +224,7 @@ RUN echo '#!/bin/bash' > /usr/local/bin/start.sh && \
     echo 'echo "SSH root密码已设置"' >> /usr/local/bin/start.sh && \
     echo '' >> /usr/local/bin/start.sh && \
     echo '# 初始化MySQL数据目录（如果为空）' >> /usr/local/bin/start.sh && \
-    echo 'if [ ! -d "/var/w ww/html/mysql/mysql" ]; then' >> /usr/local/bin/start.sh && \
+    echo 'if [ ! -d "/var/www/html/mysql/mysql" ]; then' >> /usr/local/bin/start.sh && \
     echo '    echo "初始化MySQL数据目录..."' >> /usr/local/bin/start.sh && \
     echo '    mysqld --initialize-insecure --user=mysql --datadir=/var/www/html/mysql' >> /usr/local/bin/start.sh && \
     echo '    echo "MySQL数据目录初始化完成"' >> /usr/local/bin/start.sh && \
