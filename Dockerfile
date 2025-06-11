@@ -122,7 +122,6 @@ RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/Allo
 # COPY 代码和配置文件
 COPY maccms /var/www/html/maccms
 COPY cron/maccms_cron /var/www/html/cron/maccms_cron
-COPY supervisor/conf.d /var/www/html/supervisor/conf.d
 
 # 权限设置
 RUN chown -R mysql:mysql /var/www/html/mysql \
