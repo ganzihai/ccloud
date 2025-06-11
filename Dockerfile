@@ -119,9 +119,6 @@ RUN echo '<VirtualHost *:80>\n\
 # 启用Apache模块
 RUN a2enmod rewrite
 RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
-# COPY 代码和配置文件
-COPY maccms /var/www/html/maccms
-COPY cron/maccms_cron /var/www/html/cron/maccms_cron
 
 # 权限设置
 RUN chown -R mysql:mysql /var/www/html/mysql \
@@ -131,7 +128,7 @@ RUN chown -R mysql:mysql /var/www/html/mysql \
     && chown -R root:root /var/www/html/supervisor \
     && chmod -R 755 /var/www/html/supervisor
 
-# 将supervisor主配置文件放置正确位置，包含conf.d目录
+# 配置Supervisor
 RUN echo '[supervisord]\n\
 nodaemon=true\n\
 logfile=/var/log/supervisor/supervisord.log\n\
@@ -142,22 +139,63 @@ user=root\n\
 file=/var/run/supervisor.sock\n\
 chmod=0700\n\
 \n\
-[rpcinterface:supervisor]\n\
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface\n\
-\n\
 [supervisorctl]\n\
 serverurl=unix:///var/run/supervisor.sock\n\
 \n\
 [include]\n\
-files=/var/www/html/supervisor/conf.d/*.conf\n' > /etc/supervisor/supervisord.conf
+files=/var/www/html/supervisor/conf.d/*.conf\n\
+\n\
+[program:apache2]\n\
+command=/usr/sbin/apache2ctl -D FOREGROUND\n\
+autostart=true\n\
+autorestart=true\n\
+\n\
+[program:mysql]\n\
+command=/usr/sbin/mysqld --user=mysql --datadir=/var/www/html/mysql\n\
+autostart=true\n\
+autorestart=true\n\
+\n\
+[program:sshd]\n\
+command=/usr/sbin/sshd -D\n\
+autostart=true\n\
+autorestart=true\n\
+\n\
+[program:cron]\n\
+command=/usr/sbin/cron -f\n\
+autostart=true\n\
+autorestart=true' > /etc/supervisor/conf.d/supervisord.conf
 
-# 启动脚本中启动supervisord时用主配置文件路径
-RUN sed -i 's#/etc/supervisor/conf.d/supervisord.conf#/etc/supervisor/supervisord.conf#' /start.sh
+# 创建启动脚本
+RUN echo '#!/bin/bash\n\
+\n\
+# 设置root密码\n\
+if [ -n "$SSH_PASSWORD" ]; then\n\
+    echo "root:$SSH_PASSWORD" | chpasswd\n\
+else\n\
+    echo "root:admin123" | chpasswd\n\
+fi\n\
+\n\
+# 初始化MySQL数据目录（如果为空）\n\
+if [ ! "$(ls -A /var/www/html/mysql)" ]; then\n\
+    mkdir -p /var/www/html/mysql\n\
+    chown -R mysql:mysql /var/www/html/mysql\n\
+    mysqld --initialize-insecure --datadir=/var/www/html/mysql --user=mysql\n\
+    chown -R mysql:mysql /var/www/html/mysql\n\
+fi\n\
+\n\
+# 加载cron任务\n\
+if [ -f /var/www/html/cron/maccms_cron ]; then\n\
+    crontab /var/www/html/cron/maccms_cron\n\
+fi\n\
+\n\
+# 启动supervisor\n\
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' > /start.sh
 
-# 设置start.sh权限（你已有）
+# 设置执行权限
 RUN chmod +x /start.sh
 
-# 端口暴露保持不变
+# 暴露端口
 EXPOSE 80
 
-CMD ["/start.sh"]
+# 设置启动命令
+CMD ["/start.sh"] 
