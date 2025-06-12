@@ -10,11 +10,14 @@ FROM ubuntu:22.04 as base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Shanghai
 
-# 更新系统并安装基础工具
+# ================================
+# 【修改 1/2】在这里添加 build-essential
+# ================================
 RUN apt-get update && apt-get install -y \
     openssh-server sudo curl wget cron nano tar gzip unzip sshpass \
     supervisor tzdata ca-certificates software-properties-common \
     apt-transport-https gnupg2 lsb-release net-tools \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # 设置时区
@@ -50,9 +53,7 @@ RUN echo '<VirtualHost *:80>' > /etc/apache2/sites-available/000-default.conf &&
     echo '    CustomLog ${APACHE_LOG_DIR}/access.log combined' >> /etc/apache2/sites-available/000-default.conf && \
     echo '</VirtualHost>' >> /etc/apache2/sites-available/000-default.conf
 
-# ================================
-# 【最终修正】使用 <Location> 块来隔离反向代理
-# ================================
+# 配置Apache虚拟主机 cloudsaver
 RUN echo "Listen 8008" >> /etc/apache2/ports.conf && \
     echo '<VirtualHost *:8008>' > /etc/apache2/sites-available/cloudsaver.conf && \
     echo '    ServerAdmin webmaster@localhost' >> /etc/apache2/sites-available/cloudsaver.conf && \
@@ -112,6 +113,11 @@ RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/*
+
+# ================================
+# 【修改 2/2】在这里添加 pnpm
+# ================================
+RUN npm install -g pnpm
 
 RUN wget https://go.dev/dl/go1.24.4.linux-amd64.tar.gz && \
     tar -C /usr/local -xzf go1.24.4.linux-amd64.tar.gz && \
